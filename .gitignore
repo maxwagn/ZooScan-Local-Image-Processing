@@ -1,0 +1,54 @@
+# -----------------------
+# General Python / OS junk
+# -----------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg-info/
+.DS_Store
+
+# Editor configs
+.vscode/
+.idea/
+
+# -----------------------
+# Snakemake internals
+# -----------------------
+.snakemake/
+
+# -----------------------
+# Conda / virtual envs
+# -----------------------
+env/
+.venv/
+venv/
+*.yaml~
+*.yml~
+
+# -----------------------
+# Data folders (large, generated)
+# Folder structure kept via .gitkeep files
+# -----------------------
+
+zooscan_original/
+working_pipeline/
+data/work_Background_2400dpi_191125/
+
+data/raw_scans/*
+data/work/*
+data/raw_rois/*
+data/cleaned_rois/*
+data/backgrounds/*
+data/tables/*
+
+!data/raw_scans/.gitkeep
+!data/work/.gitkeep
+!data/raw_rois/.gitkeep
+!data/cleaned_rois/.gitkeep
+!data/backgrounds/.gitkeep
+!data/tables/.gitkeep
+
+# Comparison examples are small → keep them
+# If you want to exclude them, add:
+# comparison_examples/*
