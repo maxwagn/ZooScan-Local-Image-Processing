@@ -40,26 +40,27 @@ The pipeline runs in **three main steps**, mirroring the Snakefile:
 
 Below are three examples (from `comparison_examples/`) showing:
 
-**Left:** Original ZooScan (ImageJ workflow)  
-**Middle:** Raw ROI (this pipeline)  
-**Right:** Masked/Cleaned ROI (this pipeline)
+- **Left:** Original ZooScan (ImageJ workflow)  
+- **Middle:** Raw ROI (this pipeline)  
+- **Right:** Masked/Cleaned ROI (this pipeline)  
 
-### **Example 1**
-- `1_istria02_feb_6_d0_1_2950_zooscan.jpg`
-- `1_ISTRIA02_FEB_6_obj01322_raw.png`
-- `1_ISTRIA02_FEB_6_obj01322_edit.png`
+### Example 1
 
-### **Example 2**
-- `2_istria02_feb_6_d0_1_5159_zooscan.jpg`
-- `2_ISTRIA02_FEB_6_obj01752_raw.png`
-- `2_ISTRIA02_FEB_6_obj01752_edit.png`
+| Original ZooScan | Raw ROI (this pipeline) | Masked ROI (this pipeline) |
+|------------------|-------------------------|-----------------------------|
+| ![](comparison_examples/1_istria02_feb_6_d0_1_2950_zooscan.jpg) | ![](comparison_examples/1_ISTRIA02_FEB_6_obj01322_raw.png) | ![](comparison_examples/1_ISTRIA02_FEB_6_obj01322_edit.png) |
 
-### **Example 3**
-- `3_istria02_feb_6_d0_1_1232_zooscan.jpg`
-- `3_ISTRIA02_FEB_6_obj06175_raw.png`
-- `3_ISTRIA02_FEB_6_obj06175_edit.png`
+### Example 2
 
-You can place them in a Markdown viewer for side‑by‑side comparison.
+| Original ZooScan | Raw ROI (this pipeline) | Masked ROI (this pipeline) |
+|------------------|-------------------------|-----------------------------|
+| ![](comparison_examples/2_istria02_feb_6_d0_1_5159_zooscan.jpg) | ![](comparison_examples/2_ISTRIA02_FEB_6_obj01752_raw.png) | ![](comparison_examples/2_ISTRIA02_FEB_6_obj01752_edit.png) |
+
+### Example 3
+
+| Original ZooScan | Raw ROI (this pipeline) | Masked ROI (this pipeline) |
+|------------------|-------------------------|-----------------------------|
+| ![](comparison_examples/3_istria02_feb_6_d0_1_1232_zooscan.jpg) | ![](comparison_examples/3_ISTRIA02_FEB_6_obj06175_raw.png) | ![](comparison_examples/3_ISTRIA02_FEB_6_obj06175_edit.png) |
 
 ---
 
