@@ -1,7 +1,9 @@
 # scripts/segment_and_measure.py
+
 import argparse
 import os
 import time
+import math
 
 import numpy as np
 import imageio.v2 as imageio
@@ -12,7 +14,9 @@ from skimage import measure, morphology
 
 
 def parse_args():
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(
+        description="Segment full ZooScan TIFF, extract ROIs, and write EcoTaxa-style table."
+    )
     p.add_argument("preproc_tif", help="Preprocessed TIFF (background-corrected)")
     p.add_argument("sample_id", help="Sample ID (must match metadata table)")
     p.add_argument("metadata_tsv", help="Metadata TSV with sample_id column")
@@ -44,28 +48,26 @@ def parse_args():
         "--dilate-radius",
         type=int,
         default=0,
-        help="Radius for binary dilation (0 = no dilation)",
+        help="Radius for binary dilation (0 = no dilation; keeps thin parts connected)",
     )
     p.add_argument(
         "--open-radius",
         type=int,
         default=0,
-        help="Radius for binary opening to break thin connections (0 = off).",
+        help="Radius for binary opening (0 = no opening; breaks tiny bridges)",
     )
     p.add_argument(
         "--margin",
         type=int,
         default=5,
-        help="Base pixel margin around each ROI (constant part).",
+        help="Base pixel margin around each ROI",
     )
     p.add_argument(
         "--margin-factor",
         type=float,
         default=0.0,
-        help=(
-            "Extra margin proportional to sqrt(area). "
-            "Effective margin = margin + margin_factor * sqrt(area)."
-        ),
+        help="Extra margin ~= margin_factor * sqrt(area); "
+             "useful to give big animals proportionally more padding.",
     )
 
     # thresholding
@@ -76,7 +78,7 @@ def parse_args():
         help=(
             "global_otsu = classic Otsu on whole image; "
             "local_mean = purely adaptive; "
-            "hybrid = local AND global (safer, fewer false positives)."
+            "hybrid = local AND global (reduces background junk)."
         ),
     )
     p.add_argument(
@@ -91,7 +93,8 @@ def parse_args():
         default=0.0,
         help=(
             "Offset for local threshold (in intensity units). "
-            "Positive -> more conservative (fewer objects)."
+            "Positive -> more conservative (fewer objects); "
+            "negative -> more permissive."
         ),
     )
 
@@ -100,9 +103,18 @@ def parse_args():
         "--min-contrast",
         type=float,
         default=0.0,
+        help="If >0: drop ROIs with (p95 - p5) < min_contrast (in intensity units).",
+    )
+
+    # optional removal of border fragments
+    p.add_argument(
+        "--drop-border-frac",
+        type=float,
+        default=0.0,
         help=(
-            "Minimum (p95 - p5) contrast inside ROI. "
-            "ROIs with lower contrast are discarded."
+            "If >0: drop components that touch the image border AND have area "
+            "< drop-border-frac * full-image-area. "
+            "Useful to get rid of tiny cut-off edges."
         ),
     )
 
@@ -137,7 +149,7 @@ def make_binary_mask(img_smooth, args):
     if args.thresh_mode == "local_mean":
         return mask_local
 
-    # Hybrid: AND to reduce crazy speckles while still handling gradients
+    # Hybrid = local AND global → reduces crazy background speckles
     mask_hybrid = mask_local & mask_global
     return mask_hybrid
 
@@ -157,6 +169,9 @@ def main():
         img = img.mean(axis=2)
     img = img.astype(np.float32)
 
+    H, W = img.shape
+    full_area = float(H * W)
+
     # ---- smooth ----
     if args.sigma > 0:
         img_smooth = gaussian(img, sigma=args.sigma, preserve_range=True)
@@ -166,20 +181,18 @@ def main():
     # ---- thresholding ----
     binary = make_binary_mask(img_smooth, args)
 
+    # optional opening to break tiny bridges / specks
+    if args.open_radius > 0:
+        selem_open = morphology.disk(args.open_radius)
+        binary = morphology.opening(binary, selem_open)
+
     # remove small noise specks before labeling
     binary = morphology.remove_small_objects(binary, args.min_area)
 
-    # optional opening to break thin bridges between particles
-    if args.open_radius > 0:
-        from skimage.morphology import opening, disk
-
-        binary = opening(binary, disk(args.open_radius))
-
     # optional dilation to “inflate” objects slightly
     if args.dilate_radius > 0:
-        from skimage.morphology import dilation, disk
-
-        binary = dilation(binary, disk(args.dilate_radius))
+        selem_dil = morphology.disk(args.dilate_radius)
+        binary = morphology.dilation(binary, selem_dil)
 
     # ---- connected components ----
     labeled = measure.label(binary)
@@ -204,30 +217,45 @@ def main():
     obj_idx = 0
 
     for region in props:
-        area = region.area
+        area = float(region.area)
+
+        # basic area filter
         if area < args.min_area or area > args.max_area:
             continue
 
-        # size-dependent margin
-        extra = int(args.margin_factor * np.sqrt(float(area)))
-        eff_margin = max(0, int(args.margin) + extra)
-
         minr, minc, maxr, maxc = region.bbox
 
-        minr = max(minr - eff_margin, 0)
-        minc = max(minc - eff_margin, 0)
-        maxr = min(maxr + eff_margin, img.shape[0])
-        maxc = min(maxc + eff_margin, img.shape[1])
+        # optional drop of small border fragments
+        if args.drop_border_frac > 0.0:
+            touches_border = (
+                minr == 0 or minc == 0 or maxr == H or maxc == W
+            )
+            if touches_border:
+                if area < args.drop_border_frac * full_area:
+                    # looks like a tiny cut-off piece at image edge → skip
+                    continue
+
+        # dynamic margin: base + margin_factor * sqrt(area)
+        margin = args.margin
+        if args.margin_factor > 0.0:
+            extra = int(round(args.margin_factor * math.sqrt(area)))
+            margin += max(0, extra)
+
+        minr = max(minr - margin, 0)
+        minc = max(minc - margin, 0)
+        maxr = min(maxr + margin, H)
+        maxc = min(maxc + margin, W)
 
         roi = img[minr:maxr, minc:maxc]
         if roi.size == 0:
             continue
 
-        # optional contrast filter on this ROI
-        if args.min_contrast > 0:
-            p95 = np.percentile(roi, 95)
-            p5 = np.percentile(roi, 5)
-            if p95 - p5 < args.min_contrast:
+        # simple contrast filter on the ROI if requested
+        if args.min_contrast > 0.0:
+            p5 = np.percentile(roi, 5.0)
+            p95 = np.percentile(roi, 95.0)
+            if (p95 - p5) < args.min_contrast:
+                # very flat → likely junk
                 continue
 
         obj_idx += 1

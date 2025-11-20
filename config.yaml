@@ -15,18 +15,17 @@ project:
 
 segmentation:
   gaussian_sigma: 0.5          # smoothing before thresholding
-  min_area: 220                # px; filters out very small particles
+  min_area: 200                # px; filters out very small particles
   max_area: 1000000            # px; safety upper bound
-  dilate_radius: 2             # px; keeps thin bits (antennae) connected
+  dilate_radius: 5             # px; keeps thin bits (antennae) connected
   open_radius: 1               # px; breaks tiny bridges / nonsense connections
   thresh_mode: "hybrid"        # global_otsu / local_mean / hybrid
   local_window: 151            # px; odd
-  local_offset: 0.0            # intensity offset for local threshold
+  local_offset: -5            # intensity offset for local threshold
   margin: 40                   # base margin in px around each object
   margin_factor: 0.6          # extra margin ~ factor * sqrt(area); larger for big beasts
-  min_contrast: 300.0          # contrast filter (p95 - p5); raise to kill flat junk
-
-
+  min_contrast: 500.0          # contrast filter (p95 - p5); raise to kill flat junk
+  drop_border_frac: 0.01
 
 cleanup:
   sigma: 0.15                             # smoothing (px) used only for building ROI mask

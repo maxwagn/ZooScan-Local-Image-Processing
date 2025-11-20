@@ -52,3 +52,6 @@ data/tables/*
 # Comparison examples are small → keep them
 # If you want to exclude them, add:
 # comparison_examples/*
+
+scripts/segment_and_measure.py_19-11
+

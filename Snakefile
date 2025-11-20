@@ -60,6 +60,7 @@ rule segment_and_measure:
         margin         = seg.get("margin", 20),
         margin_factor  = seg.get("margin_factor", 0.0),
         min_contrast   = seg.get("min_contrast", 0.0),
+        border_frac    = seg.get("drop_border_frac", 0.005)
     shell:
         """
         mkdir -p {params.rois_dir}
@@ -80,7 +81,7 @@ rule segment_and_measure:
             --local-offset {params.local_offset} \
             --margin {params.margin} \
             --margin-factor {params.margin_factor} \
-            --min-contrast {params.min_contrast}
+            --min-contrast {params.min_contrast} --drop-border-frac {params.border_frac}
         """
 
 rule cleanup_rois:

@@ -16,7 +16,7 @@ def parse_args():
     p = argparse.ArgumentParser(
         description=(
             "Post-process ROIs for a sample: "
-            "keep main object, optionally mask background and adjust tone, "
+            "keep a single main object, optionally mask background and adjust tone, "
             "and write a clean EcoTaxa table (1:1 with input ROIs)."
         )
     )
@@ -42,7 +42,7 @@ def parse_args():
         "--margin",
         type=int,
         default=20,
-        help="(Currently unused for cropping; ROI size is kept unchanged.)",
+        help="Unused when keeping full ROI size (kept for compatibility).",
     )
 
     # background masking parameters
@@ -65,7 +65,7 @@ def parse_args():
         type=int,
         default=5,
         help="Radius (pixels) to dilate the object mask BEFORE masking "
-             "(helps keep hairs / antenna tips).",
+             "(keeps hairs / antenna tips).",
     )
     p.add_argument(
         "--mask-feather-sigma",
@@ -78,7 +78,7 @@ def parse_args():
         type=float,
         default=99.0,
         help="Percentile of intensities inside the ROI used as background level "
-             "when masking (e.g. 99–99.9 ≈ very bright background).",
+             "when masking (e.g. 99–99.5 ≈ very bright background).",
     )
 
     # tone / brightness adjustment AFTER masking
@@ -150,11 +150,54 @@ def apply_tone(crop_masked, tone_mode, gamma, stretch_low, stretch_high):
     return img
 
 
+def choose_main_component(props, img_shape, min_area):
+    """
+    Choose a single component using a heuristic:
+
+    1. ignore components with area < min_area
+    2. prefer components that do NOT touch any image edge
+    3. among those, prefer larger area and more central position
+    4. if all touch edges, fall back to the best we can find
+    """
+    if not props:
+        return None
+
+    h, w = img_shape
+    cy_img = h / 2.0
+    cx_img = w / 2.0
+    max_dist = np.hypot(cy_img, cx_img) + 1e-6
+
+    candidates = []
+    for r in props:
+        if r.area < min_area:
+            continue
+
+        minr, minc, maxr, maxc = r.bbox
+        touches_edge = (
+            minr == 0 or minc == 0 or maxr == h or maxc == w
+        )
+
+        cy, cx = r.centroid
+        dist_center = np.hypot(cy - cy_img, cx - cx_img)
+
+        # sort key: (touches_edge, -area, dist_to_center)
+        candidates.append(
+            (touches_edge, -float(r.area), float(dist_center), r)
+        )
+
+    if not candidates:
+        return None
+
+    # best = minimal key → prefers non-edge, large, central
+    candidates.sort()
+    return candidates[0][3]
+
+
 def process_single_roi(
     img,
     sigma,
     min_area,
-    margin,  # kept for compatibility; not used for cropping
+    margin,  # kept for API compatibility, not used when keeping full ROI
     mask_background,
     mask_dilate_radius,
     mask_feather_sigma,
@@ -166,16 +209,17 @@ def process_single_roi(
 ):
     """
     Take one ROI image and return:
-      - crop_out: intensity image (same shape as input), optionally background-masked & tone-adjusted (uint16)
+      - crop_out: ROI-sized, optionally background-masked & tone-adjusted image (uint16)
       - rloc: regionprops for the main object (for updated morphometrics)
 
-    There is ALWAYS at most ONE object kept: the largest connected component.
+    We keep the **full ROI size**: same width/height in and out.
     """
 
     # ----- prepare intensities -----
     if img.ndim == 3:
         img = img.mean(axis=2)
     img = img.astype(np.float32)
+    h, w = img.shape
 
     # Work on a smoothed copy to build a robust mask
     if sigma > 0:
@@ -198,9 +242,12 @@ def process_single_roi(
         # nothing found -> skip this ROI entirely
         return None
 
-    # ---- pick the largest component only ----
-    largest_region = max(props, key=lambda r: r.area)
-    mask_full = (labeled == largest_region.label)
+    # ---- choose a single main component (size + edge + centrality heuristic) ----
+    main_region = choose_main_component(props, img.shape, min_area=min_area)
+    if main_region is None:
+        return None
+
+    mask_full = (labeled == main_region.label)
 
     # optional dilation: keep hairs / antennae
     if mask_dilate_radius > 0:
@@ -214,7 +261,7 @@ def process_single_roi(
         return None
     rloc = props_local[0]
 
-    # ----- background masking -----
+    # ----- background masking (on full-size ROI) -----
     if mask_background:
         mask_float = mask_full.astype(np.float32)
 
@@ -225,21 +272,20 @@ def process_single_roi(
 
         # background level from bright part of the ROI
         bg_level = np.percentile(img, bg_percentile)
-
-        img_masked = mask_float * img + (1.0 - mask_float) * bg_level
+        crop_masked = mask_float * img + (1.0 - mask_float) * bg_level
     else:
-        img_masked = img
+        crop_masked = img
 
     # ----- tone adjustment AFTER masking -----
-    img_toned = apply_tone(
-        img_masked,
+    crop_toned = apply_tone(
+        crop_masked,
         tone_mode=tone_mode,
         gamma=gamma,
         stretch_low=stretch_low,
         stretch_high=stretch_high,
     )
 
-    crop_out = np.clip(img_toned, 0, 65535).astype(np.uint16)
+    crop_out = np.clip(crop_toned, 0, 65535).astype(np.uint16)
     return crop_out, rloc
 
 
